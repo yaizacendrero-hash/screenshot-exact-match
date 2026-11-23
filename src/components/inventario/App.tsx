@@ -26,6 +26,10 @@ export function App() {
   const entrar = (p: Perfil) => { setPerfil(p); try { sessionStorage.setItem(CLAVE_SESION, p); } catch { /* ok */ } };
   const salir = () => { setPerfil(null); setVista({ t: "panel" }); setMensaje(null); try { sessionStorage.removeItem(CLAVE_SESION); } catch { /* ok */ } };
 
+  // La pantalla de entrada no necesita los datos: se pinta de inmediato (también en el HTML del servidor)
+  // en vez de esperar a que cargue localStorage. Mejora el primer contenido visible.
+  if (!perfil) return <div className="bg-crema text-tinta"><Entrada onEntrar={entrar} /></div>;
+
   if (!inv.listo) return <main className="grid min-h-screen place-items-center bg-crema text-corteza">Cargando el pizarrón…</main>;
 
   if (!inv.snap) return (
@@ -36,8 +40,6 @@ export function App() {
       <Boton className="mt-4" onClick={inv.recargar}>Reintentar</Boton>
     </main>
   );
-
-  if (!perfil) return <div className="bg-crema text-tinta"><Entrada onEntrar={entrar} /></div>;
 
   const snap = inv.snap;
   const actor = ACTORES[perfil];
