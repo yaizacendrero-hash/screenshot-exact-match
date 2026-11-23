@@ -119,6 +119,7 @@ export function aplicar(snap: Snapshot, cmd: Comando, hoy: string): Resultado {
   let anterior: unknown = eq ? clone(eq) : null;
   let nuevo: unknown = null;
   let efecto = "";
+  let registroEvento = cmd.entidad;
   const needEq = () => (eq ? null : `No existe el equipo ${cmd.entidad}.`);
 
   switch (cmd.tipo) {
@@ -203,10 +204,12 @@ export function aplicar(snap: Snapshot, cmd: Comando, hoy: string): Resultado {
         const e = { ...eqs[i]!, ...p.cambios, id: eqs[i]!.id };
         const errs = validarEquipo(e, eqs, hoy);
         if (errs.length) return fail(errs.join(" "));
-        eqs[i] = e;
+        // El evento describe el cambio del equipo (así la conciliación lo ve).
+        anterior = clone(eqs[i]!); eqs[i] = e; nuevo = clone(e); registroEvento = e.id;
       }
-      p.decision = decision; p.decisor = cmd.actor.id; nuevo = clone(p);
-      efecto = decision === "aprobada" ? "Propuesta aprobada y aplicada" : "Propuesta rechazada";
+      p.decision = decision; p.decisor = cmd.actor.id;
+      if (decision !== "aprobada") nuevo = clone(p);
+      efecto = decision === "aprobada" ? `Propuesta ${p.id} aprobada y aplicada` : "Propuesta rechazada";
       break;
     }
     case "ajuste": {
@@ -231,7 +234,7 @@ export function aplicar(snap: Snapshot, cmd: Comando, hoy: string): Resultado {
   }
 
   const evento: Evento = {
-    id: `ev-${next.eventos.length + 1}-${cmd.id}`, comandoOrigen: cmd.id, registro: cmd.entidad,
+    id: `ev-${next.eventos.length + 1}-${cmd.id}`, comandoOrigen: cmd.id, registro: registroEvento,
     estadoAnterior: anterior, estadoNuevo: nuevo, efecto, motivo, revisionAnterior: snap.revision, revisionNueva: snap.revision + 1,
   };
   next.revision = snap.revision + 1;
@@ -247,12 +250,10 @@ export function conciliar(snap: Snapshot, hoy: string) {
   const cmdIds = new Set(snap.comandosAplicados.map((c) => c.id));
   for (const ev of snap.eventos) if (!cmdIds.has(ev.comandoOrigen)) difs.push({ registro: ev.registro, detalle: `Evento ${ev.id} sin comando de origen` });
   const ultimo = new Map<string, Evento>();
+  const esEq = (x: unknown): x is Equipo => !!x && typeof x === "object" && "frecuenciaDias" in (x as object);
   for (const ev of snap.eventos) {
-    const esEquipo = !snap.entidades.propuestas.some((p) => p.id === ev.registro) && !String(ev.estadoNuevo && (ev.estadoNuevo as Propuesta).decision ?? "");
-    if (esEquipo && ev.efecto.indexOf("Propuesta") !== 0) {
-      const key = ev.efecto.startsWith("Ajuste") ? (ev.estadoNuevo as Equipo).id : ev.registro;
-      ultimo.set(key, ev);
-    }
+    const ref = ev.estadoNuevo ?? ev.estadoAnterior;
+    if (esEq(ref)) ultimo.set(ref.id, ev);
   }
   // Estado reconstruido = entidades actuales con el último estado de cada evento por encima.
   const reconstruidos = new Map(snap.entidades.equipos.map((e) => [e.id, e] as const));
@@ -303,7 +304,8 @@ export function validarSnapshot(raw: unknown): { ok: true; snap: Snapshot; migra
     nombres.add(n);
   }
   for (const ev of s.eventos) if (!cmdIds.has(ev.comandoOrigen)) errores.push(`Evento ${ev.id}: comando ${ev.comandoOrigen} inexistente.`);
-  for (const p of ent.propuestas) if (!eqIds.has(p.registro)) errores.push(`Propuesta ${p.id}: equipo ${p.registro} inexistente.`);
+  const bajas = new Set(s.eventos.filter((ev) => ev.efecto.startsWith("Baja de")).map((ev) => ev.registro));
+  for (const p of ent.propuestas) if (!eqIds.has(p.registro) && !bajas.has(p.registro)) errores.push(`Propuesta ${p.id}: equipo ${p.registro} inexistente.`);
   for (const a of ent.ajustes) if (!evIds.has(a.eventoCorregido)) errores.push(`Ajuste ${a.id}: evento ${a.eventoCorregido} inexistente.`);
   return errores.length ? { ok: false, errores } : { ok: true, snap: s, migrado };
 }
