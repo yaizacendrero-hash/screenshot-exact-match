@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ACTORES } from "./config";
 import {
-  aCsv, aplicar, conciliar, contadores, diasRestantes, estadoDe, filtrarEventos, porcentaje, validarSnapshot,
+  aCsv, aplicar, bloqueosService, conciliar, contadores, diasRestantes, estadoDe, filtrarEventos, porcentaje, validarSnapshot,
   type Comando, type Equipo, type Snapshot, type TipoComando,
 } from "./engine";
 import { cargar, crearSemilla, ejecutar, exportarJson, restaurar, type Almacen } from "./store";
@@ -252,5 +252,35 @@ describe("exportación", () => {
     for (const { ev } of filas) expect(csv.join("\n")).toContain(ev.id);
     expect(aCsv(filtrarEventos(s, {})).split("\n")).toHaveLength(s.eventos.length + 1);
     expect(filtrarEventos(s, { desde: "2099-01-01" })).toHaveLength(0);
+  });
+});
+
+describe("Mantenimiento con causas concurrentes", () => {
+  // Horno de piso: service vencido (-12 días). Se le suman una avería y un fuera de servicio.
+  it("vencido + avería + fuera de servicio: el service queda bloqueado hasta que no quede NINGUNA causa", () => {
+    let s = crearSemilla(HOY);
+    const horno = () => eq(s, "eq-01");
+    expect(estadoDe(horno(), HOY)).toBe("Service vencido");
+    expect(bloqueosService(horno())).toEqual([]); // vencido solo NO bloquea: es lo que el service resuelve
+
+    s = ok(s, cmd("abrirAveria", "eq-01", s));
+    expect(bloqueosService(horno())).toEqual(["Tiene una avería abierta"]);
+    expect(estadoDe(horno(), HOY)).toBe("Service vencido"); // la avería es independiente del vencimiento
+    expect(aplicar(s, cmd("registrarService", "eq-01", s), HOY).ok).toBe(false);
+
+    s = ok(s, cmd("marcarFuera", "eq-01", s, { motivo: "Parado por la avería" }));
+    expect(bloqueosService(horno())).toEqual(["Está fuera de servicio", "Tiene una avería abierta"]);
+
+    s = ok(s, cmd("cerrarAveria", "eq-01", s));
+    expect(s.eventos[s.eventos.length - 1]!.efecto).toBe("Avería cerrada (sigue bloqueado: fuera de servicio)");
+    expect(bloqueosService(horno())).toEqual(["Está fuera de servicio"]);
+    expect(aplicar(s, cmd("registrarService", "eq-01", s), HOY).ok).toBe(false);
+
+    s = ok(s, cmd("desmarcarFuera", "eq-01", s));
+    expect(bloqueosService(horno())).toEqual([]);
+    s = ok(s, cmd("registrarService", "eq-01", s));
+    expect(estadoDe(horno(), HOY)).toBe("Al día");
+    expect(diasRestantes(horno(), HOY)).toBe(180);
+    expect(conciliar(s, HOY).diferencias).toEqual([]);
   });
 });

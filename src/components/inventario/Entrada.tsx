@@ -3,7 +3,7 @@ import { ACTORES, AVISO_ACCESO, CLAVE_PANEL, PERFILES } from "@/lib/inventario/c
 import type { Perfil } from "@/lib/inventario/engine";
 import { Boton, Campo, entrada } from "./ui";
 
-export function Entrada({ onEntrar }: { onEntrar: (p: Perfil) => void }) {
+export function Entrada({ onEntrar, onDocs }: { onEntrar: (p: Perfil) => void; onDocs: () => void }) {
   const [clave, setClave] = useState("");
   const [perfil, setPerfil] = useState<Perfil>("Operación");
   const [error, setError] = useState("");
@@ -30,6 +30,7 @@ export function Entrada({ onEntrar }: { onEntrar: (p: Perfil) => void }) {
         <Boton className="w-full" onClick={entrar}>Entrar</Boton>
       </div>
       <p className="mt-4 rounded-lg border-2 border-dashed border-corteza-suave p-3 text-sm text-corteza">{AVISO_ACCESO}.</p>
+      <Boton variante="suave" className="mt-3 w-full" onClick={onDocs}>Ver documentación</Boton>
     </main>
   );
 }

@@ -3,6 +3,7 @@ import { ACTORES, AVISO_ACCESO } from "@/lib/inventario/config";
 import type { Perfil, TipoComando } from "@/lib/inventario/engine";
 import { useInventario } from "@/lib/inventario/useInventario";
 import { Control } from "./Control";
+import { Docs } from "./Docs";
 import { Entrada } from "./Entrada";
 import { Ficha } from "./Ficha";
 import { FormEquipo } from "./FormEquipo";
@@ -19,6 +20,14 @@ export function App() {
   const [vista, setVista] = useState<Vista>({ t: "panel" });
   const [filtro, setFiltro] = useState<Filtro>({ registro: "", desde: "", hasta: "" });
   const [mensaje, setMensaje] = useState<Mensaje>(null);
+  const [verDocs, setVerDocs] = useState(false);
+
+  // La documentación se abre sin clave; "#docs" en la dirección lleva directo a ella.
+  useEffect(() => { if (window.location.hash === "#docs") setVerDocs(true); }, []);
+  const abrirDocs = (abrir: boolean) => {
+    setVerDocs(abrir);
+    try { history.replaceState(null, "", abrir ? "#docs" : window.location.pathname + window.location.search); } catch { /* ok */ }
+  };
 
   useEffect(() => {
     try { const p = sessionStorage.getItem(CLAVE_SESION) as Perfil | null; if (p && p in ACTORES) setPerfil(p); } catch { /* sin sessionStorage */ }
@@ -28,7 +37,8 @@ export function App() {
 
   // La pantalla de entrada no necesita los datos: se pinta de inmediato (también en el HTML del servidor)
   // en vez de esperar a que cargue localStorage. Mejora el primer contenido visible.
-  if (!perfil) return <div className="bg-crema text-tinta"><Entrada onEntrar={entrar} /></div>;
+  if (verDocs) return <Docs onVolver={() => abrirDocs(false)} />;
+  if (!perfil) return <div className="bg-crema text-tinta"><Entrada onEntrar={entrar} onDocs={() => abrirDocs(true)} /></div>;
 
   if (!inv.listo) return <main className="grid min-h-screen place-items-center bg-crema text-corteza">Cargando el pizarrón…</main>;
 
